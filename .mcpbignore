@@ -1,0 +1,17 @@
+# Runtime bundle hygiene
+src/
+*.test.ts
+tsconfig*.json
+
+# Generated or local artifacts
+coverage/
+*.tgz
+*.mcpb
+*.zip
+
+# Dev-only Node tooling
+node_modules/typescript/
+node_modules/tsx/
+node_modules/esbuild/
+node_modules/@esbuild/
+node_modules/@types/

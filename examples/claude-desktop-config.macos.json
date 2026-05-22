@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "shure": {
+      "command": "node",
+      "args": ["/Users/stella/shure-mcp/dist/index.js"],
+      "env": {
+        "SHURE_CONFIG_PATH": "/Users/stella/shure-mcp/examples/shure.config.example.json"
+      }
+    }
+  }
+}

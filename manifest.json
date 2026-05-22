@@ -1,0 +1,82 @@
+{
+  "manifest_version": "0.3",
+  "name": "shure-mcp",
+  "version": "0.1.0",
+  "description": "Local MCP server for guarded room operations and monitoring of Shure installed-audio devices.",
+  "author": {
+    "name": "lutztalk"
+  },
+  "server": {
+    "type": "node",
+    "entry_point": "dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/dist/index.js"],
+      "env": {
+        "SHURE_CONFIG_PATH": "${user_config.shure_config_path}",
+        "SHURE_ALLOW_RAW_SET": "${user_config.allow_raw_set}",
+        "SHURE_ALLOW_DESTRUCTIVE": "false",
+        "SHURE_ALLOW_UNKNOWN_MUTATING_COMMANDS": "false"
+      }
+    }
+  },
+  "tools": [
+    { "name": "shure_list_devices", "description": "List configured Shure devices, rooms, profiles, and safety posture." },
+    { "name": "shure_probe_device", "description": "Probe TCP/REST health and profile capabilities for a configured Shure device." },
+    { "name": "shure_get_device_status", "description": "Get normalized status for a configured Shure device." },
+    { "name": "shure_get_room_status", "description": "Get normalized status for all devices in a configured room." },
+    { "name": "shure_set_mute", "description": "Mute, unmute, or toggle a device/channel/automixer/coverage area using guarded typed controls." },
+    { "name": "shure_set_gain", "description": "Set channel or coverage-area gain in dB." },
+    { "name": "shure_identify_device", "description": "Turn device identify/flash LED on or off." },
+    { "name": "shure_load_preset", "description": "Load preset 1-10 via REST when available, TCP fallback." },
+    { "name": "shure_get_talker_positions", "description": "Read active talker positions from MXA REST-capable devices." },
+    { "name": "shure_send_tcp_command", "description": "Send a documented Shure TCP command string through the guarded safety policy." }
+  ],
+  "prompts": [
+    {
+      "name": "shure_room_health_check",
+      "description": "Guide an operator through a Shure room status review.",
+      "arguments": ["roomId"],
+      "text": "Run a Shure room health check for ${arguments.roomId}. Use shure_get_room_status, summarize device health, call out failed transports, and recommend concrete next steps without changing room state."
+    },
+    {
+      "name": "shure_mute_sync_diagnosis",
+      "description": "Diagnose mute sync across Shure processors, microphones, and conferencing software.",
+      "arguments": ["roomId"],
+      "text": "Diagnose Shure mute sync for ${arguments.roomId}. Check room/device status, identify the processor/microphone roles, prefer P300/processor automixer mute state for system mute, and avoid source-muting microphones unless explicitly asked."
+    },
+    {
+      "name": "shure_camera_tracking_setup",
+      "description": "Assess MXA talker-position and camera-tracking readiness.",
+      "arguments": ["deviceId"],
+      "text": "Assess Shure camera-tracking readiness for ${arguments.deviceId}. Probe the MXA device, try shure_get_talker_positions if REST is available, and explain REST/TCP requirements for talker-position workflows."
+    },
+    {
+      "name": "shure_safe_tcp_command",
+      "description": "Evaluate and run a documented command string through guardrails.",
+      "arguments": ["deviceId", "command"],
+      "text": "Evaluate and, if safe, send this documented Shure TCP command to ${arguments.deviceId}: ${arguments.command}. Prefer read-only GET commands. If the safety policy blocks it, explain why and suggest the equivalent typed tool when one exists."
+    }
+  ],
+  "user_config": {
+    "shure_config_path": {
+      "type": "string",
+      "title": "Shure config path",
+      "description": "Absolute path to a shure-mcp JSON config file.",
+      "required": true
+    },
+    "allow_raw_set": {
+      "type": "boolean",
+      "title": "Allow raw SET commands",
+      "description": "Enable only for trusted operators. Typed mute/gain/identify/preset tools remain available either way.",
+      "default": false,
+      "required": false
+    }
+  },
+  "compatibility": {
+    "platforms": ["darwin", "win32"],
+    "runtimes": {
+      "node": ">=20"
+    }
+  }
+}

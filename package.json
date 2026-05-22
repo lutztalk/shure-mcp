@@ -1,0 +1,45 @@
+{
+  "name": "shure-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for controlling and monitoring Shure networked audio devices.",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "bin": {
+    "shure-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "docs",
+    "examples",
+    "skills/shure-av-operator/SKILL.md",
+    "manifest.json",
+    "README.md"
+  ],
+  "scripts": {
+    "clean": "rm -rf dist",
+    "prebuild": "npm run clean",
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/index.ts",
+    "inspect": "npx @modelcontextprotocol/inspector node dist/index.js",
+    "mcpb:validate": "npx -y @anthropic-ai/mcpb validate manifest.json",
+    "mcpb:pack": "npm run build && npm run mcpb:validate && npx -y @anthropic-ai/mcpb pack && npx -y @anthropic-ai/mcpb clean shure-mcp.mcpb",
+    "skill:validate": "npx -y skills-ref validate skills/shure-av-operator",
+    "skill:pack": "npm run skill:validate && cd skills && zip -qr shure-av-operator.zip shure-av-operator -x '*.DS_Store'",
+    "start": "node dist/index.js",
+    "test": "npm run build && node --test --import tsx \"src/**/*.test.ts\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "tsx": "^4.22.3",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

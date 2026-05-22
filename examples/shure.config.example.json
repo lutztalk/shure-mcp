@@ -1,0 +1,49 @@
+{
+  "devices": [
+    {
+      "id": "boardroom-mxa920",
+      "name": "Boardroom MXA920",
+      "host": "192.168.1.50",
+      "model": "MXA920",
+      "room": "boardroom",
+      "tags": ["ceiling-array", "camera-tracking"],
+      "preferredApi": "auto",
+      "tcpPort": 2202,
+      "restBaseUrl": "https://192.168.1.50",
+      "tls": "insecure"
+    },
+    {
+      "id": "boardroom-p300",
+      "name": "Boardroom P300",
+      "host": "192.168.1.51",
+      "model": "P300",
+      "room": "boardroom",
+      "tags": ["processor", "usb"],
+      "preferredApi": "tcp",
+      "tcpPort": 2202,
+      "tls": "verify"
+    }
+  ],
+  "rooms": [
+    {
+      "id": "boardroom",
+      "name": "Boardroom",
+      "deviceIds": ["boardroom-mxa920", "boardroom-p300"],
+      "tags": ["zoom-room"]
+    }
+  ],
+  "allowedHosts": ["192.168.1.50", "192.168.1.51"],
+  "safety": {
+    "allowRawSet": false,
+    "allowDestructive": false,
+    "allowUnknownMutatingCommands": false
+  },
+  "timeouts": {
+    "tcpMs": 2000,
+    "restMs": 2500,
+    "idleMs": 150
+  },
+  "logging": {
+    "level": "warn"
+  }
+}
