@@ -1,7 +1,7 @@
 {
   "manifest_version": "0.3",
   "name": "shure-mcp",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Local MCP server for guarded room operations and monitoring of Shure installed-audio devices.",
   "author": {
     "name": "lutztalk"
@@ -30,7 +30,11 @@
     { "name": "shure_identify_device", "description": "Turn device identify/flash LED on or off." },
     { "name": "shure_load_preset", "description": "Load preset 1-10 via REST when available, TCP fallback." },
     { "name": "shure_get_talker_positions", "description": "Read active talker positions from MXA REST-capable devices." },
-    { "name": "shure_send_tcp_command", "description": "Send a documented Shure TCP command string through the guarded safety policy." }
+    { "name": "shure_send_tcp_command", "description": "Send a documented Shure TCP command string through the guarded safety policy." },
+    { "name": "shure_fleet_health", "description": "Probe all configured Shure devices in parallel and return a fleet health dashboard." },
+    { "name": "shure_get_audio_levels", "description": "Read peak audio input levels for specified channels on a Shure device." },
+    { "name": "shure_get_dante_status", "description": "Read Dante and AES67 audio network status from a Shure device." },
+    { "name": "shure_get_wireless_status", "description": "Read battery, RF frequency, and signal strength from a Shure wireless receiver." }
   ],
   "prompts": [
     {

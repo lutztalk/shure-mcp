@@ -1,10 +1,13 @@
 import {
+  buildGetAudioLevelCommand,
   buildGetGainCommand,
   buildGetMuteCommand,
+  buildGetWirelessCommand,
   buildIdentifyCommand,
   buildLoadPresetCommand,
   buildSetGainCommand,
   buildSetMuteCommand,
+  danteCommands,
   deviceInfoCommands,
   rawGainToDb,
   type GainTarget as LegacyGainTarget,
@@ -15,9 +18,13 @@ import { resolveDevice, resolveRoom } from "../core/config.js";
 import { errorResult, okResult, toErrorMessage } from "../core/result.js";
 import { assertTypedWriteAllowed, evaluateRawTcpCommand } from "../core/safety.js";
 import type {
+  AudioLevelEntry,
+  DanteStatus,
   DeviceConfig,
   DeviceProbe,
   DeviceStatus,
+  FleetDeviceEntry,
+  FleetHealth,
   GainTarget,
   MuteState,
   MuteTarget,
@@ -26,6 +33,7 @@ import type {
   ShureConfig,
   TalkerPosition,
   TransportHealth,
+  WirelessStatus,
 } from "../core/types.js";
 import { listProfiles, selectProfile, summarizeProfile } from "../profiles/device-profile.js";
 import { MxaRestTransport } from "../transports/rest.js";
@@ -358,6 +366,204 @@ export class DeviceService {
     }
   }
 
+  async getFleetHealth(): Promise<OperationResult<FleetHealth>> {
+    const startedAt = Date.now();
+
+    const probeResults = await Promise.allSettled(
+      this.config.devices.map((device) => this.probeDevice({ deviceId: device.id })),
+    );
+
+    const entries: FleetDeviceEntry[] = probeResults.map((result, index) => {
+      const device = this.config.devices[index];
+      if (result.status === "fulfilled") {
+        const probe = result.value;
+        const status: FleetDeviceEntry["status"] = !probe.tcp.ok
+          ? "offline"
+          : probe.warnings.length > 0
+            ? "degraded"
+            : "online";
+        return {
+          id: device.id,
+          name: device.name,
+          model: probe.model ?? device.model ?? "unknown",
+          room: device.room,
+          status,
+          tcpOk: probe.tcp.ok,
+          restOk: probe.rest?.ok,
+          tcpLatencyMs: probe.tcp.latencyMs,
+          restLatencyMs: probe.rest?.latencyMs,
+          firmwareVersion: probe.firmwareVersion,
+          capabilities: probe.capabilities,
+          warnings: probe.warnings,
+        };
+      }
+
+      return {
+        id: device.id,
+        name: device.name,
+        model: device.model ?? "unknown",
+        room: device.room,
+        status: "offline" as const,
+        tcpOk: false,
+        capabilities: [],
+        warnings: [toErrorMessage(result.reason)],
+      };
+    });
+
+    const onlineCount = entries.filter((e) => e.status === "online").length;
+    const degradedCount = entries.filter((e) => e.status === "degraded").length;
+    const offlineCount = entries.filter((e) => e.status === "offline").length;
+    const total = entries.length;
+    const durationMs = Date.now() - startedAt;
+
+    const rooms = this.config.rooms.map((room) => {
+      const roomDevices = entries.filter((e) => room.deviceIds.includes(e.id));
+      return {
+        id: room.id,
+        name: room.name,
+        allOnline: roomDevices.length > 0 && roomDevices.every((e) => e.status === "online"),
+        deviceIds: room.deviceIds,
+      };
+    });
+
+    const summary =
+      offlineCount === 0 && degradedCount === 0
+        ? `All ${total} device${total !== 1 ? "s" : ""} online.`
+        : [
+            onlineCount > 0 ? `${onlineCount} online` : "",
+            degradedCount > 0 ? `${degradedCount} degraded` : "",
+            offlineCount > 0 ? `${offlineCount} offline` : "",
+          ]
+            .filter(Boolean)
+            .join(", ") + ` of ${total} device${total !== 1 ? "s" : ""}.`;
+
+    const data: FleetHealth = {
+      ok: offlineCount === 0,
+      summary,
+      onlineCount,
+      degradedCount,
+      offlineCount,
+      totalCount: total,
+      durationMs,
+      devices: entries,
+      rooms,
+    };
+
+    return okResult("fleet.health", {
+      durationMs,
+      data,
+      warnings: entries.flatMap((e) => e.warnings.map((w) => `${e.id}: ${w}`)),
+    });
+  }
+
+  async getAudioLevels(
+    selector: DeviceSelector,
+    channels: number[],
+  ): Promise<OperationResult<{ levels: AudioLevelEntry[] }>> {
+    const startedAt = Date.now();
+    const device = resolveDevice(this.config, selector);
+
+    const levelResults = await Promise.allSettled(
+      channels.map(async (channel) => {
+        const result = await this.tcp.send(device, buildGetAudioLevelCommand(channel));
+        const parameter = result.parsed.frames.find((f) => !f.isError)?.parameter;
+        const rawLevel = parameter ? firstValueForParameter(result.parsed, parameter) : undefined;
+        return {
+          channel,
+          rawLevel,
+          peakDb: rawLevel ? parseRawAudioLevel(rawLevel) : undefined,
+        };
+      }),
+    );
+
+    const levels: AudioLevelEntry[] = levelResults.map((result, index) => {
+      if (result.status === "fulfilled") return result.value;
+      return { channel: channels[index], error: toErrorMessage(result.reason) };
+    });
+
+    const failedCount = levels.filter((l) => l.error !== undefined).length;
+
+    return okResult("audio.metering", {
+      deviceId: device.id,
+      transport: "tcp",
+      durationMs: Date.now() - startedAt,
+      data: { levels },
+      warnings: failedCount > 0 ? [`${failedCount} of ${channels.length} channel reads failed.`] : [],
+    });
+  }
+
+  async getDanteStatus(selector: DeviceSelector): Promise<OperationResult<DanteStatus>> {
+    const startedAt = Date.now();
+    const device = resolveDevice(this.config, selector);
+
+    const entries = await Promise.all(
+      (Object.entries(danteCommands) as Array<[keyof DanteStatus, string]>).map(async ([key, command]) => {
+        try {
+          const result = await this.tcp.send(device, command);
+          const parameter = result.parsed.frames.find((f) => !f.isError)?.parameter;
+          return [key, parameter ? firstValueForParameter(result.parsed, parameter)?.trim() : undefined] as const;
+        } catch {
+          return [key, undefined] as const;
+        }
+      }),
+    );
+
+    const data = Object.fromEntries(entries) as DanteStatus;
+
+    return okResult("dante.read", {
+      deviceId: device.id,
+      transport: "tcp",
+      durationMs: Date.now() - startedAt,
+      data,
+      warnings:
+        data.danteEnabled === undefined
+          ? ["DANTE_ENABLED not reported; Dante TCP commands may not be supported on this firmware/model."]
+          : [],
+    });
+  }
+
+  async getWirelessStatus(selector: DeviceSelector, channel?: number): Promise<OperationResult<WirelessStatus>> {
+    const startedAt = Date.now();
+    const device = resolveDevice(this.config, selector);
+
+    const wirelessParams = [
+      ["batteryCharge", "BATT_CHARGE"],
+      ["rfFrequency", "RF_FREQUENCY"],
+      ["rfPower", "RF_POWER"],
+      ["rfSignalStrength", "RF_SIGNAL_STRENGTH"],
+      ["transmitterType", "TX_TYPE"],
+    ] as const;
+
+    const entries = await Promise.all(
+      wirelessParams.map(async ([key, param]) => {
+        try {
+          const result = await this.tcp.send(device, buildGetWirelessCommand(param, channel ?? 1));
+          const parameter = result.parsed.frames.find((f) => !f.isError)?.parameter;
+          return [key, parameter ? firstValueForParameter(result.parsed, parameter)?.trim() : undefined] as const;
+        } catch {
+          return [key, undefined] as const;
+        }
+      }),
+    );
+
+    const data: WirelessStatus = {
+      ...Object.fromEntries(entries),
+      ...(channel !== undefined ? { channel } : {}),
+    };
+
+    const hasValues = Object.entries(data).some(([k, v]) => k !== "channel" && v !== undefined);
+
+    return okResult("wireless.read", {
+      deviceId: device.id,
+      transport: "tcp",
+      durationMs: Date.now() - startedAt,
+      data,
+      warnings: hasValues
+        ? []
+        : ["No wireless parameters reported; confirm this is a wireless receiver with active transmitters."],
+    });
+  }
+
   private async readDeviceInfo(device: DeviceConfig): Promise<{
     tcp: TransportHealth;
     model?: string;
@@ -440,6 +646,11 @@ function shouldPreferRest(device: DeviceConfig, restCapable: boolean): boolean {
 
 function firstNonErrorValue(response: { frames: Array<{ isError: boolean; valueTokens: string[] }> }): string | undefined {
   return response.frames.find((frame) => !frame.isError)?.valueTokens.join(" ").trim();
+}
+
+function parseRawAudioLevel(rawValue: string): number | undefined {
+  const value = Number(rawValue);
+  return Number.isFinite(value) ? value / 10 : undefined;
 }
 
 function inferMuteParameter(target: MuteTarget): string {

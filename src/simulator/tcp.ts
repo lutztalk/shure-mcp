@@ -15,10 +15,23 @@ export class ShureTcpSimulator {
 
   constructor(private readonly options: TcpSimulatorOptions = {}) {
     this.server = net.createServer((socket) => {
-      socket.once("data", (chunk) => {
-        const command = chunk.toString("ascii").trim();
-        socket.write(this.respond(command));
+      let buffer = "";
+
+      socket.on("data", (chunk) => {
+        buffer += chunk.toString("ascii");
+
+        let match: RegExpExecArray | null;
+        while ((match = /<[^<>]*>/.exec(buffer)) !== null) {
+          const frame = match[0].trim();
+          buffer = buffer.slice(match.index + match[0].length);
+          const response = this.respond(frame);
+          if (response) {
+            socket.write(response);
+          }
+        }
       });
+
+      socket.on("error", () => {});
     });
   }
 
@@ -47,9 +60,11 @@ export class ShureTcpSimulator {
   }
 
   private respond(command: string): string {
+    const model = this.options.model ?? "MXA920";
+
     switch (command) {
       case "< GET MODEL >":
-        return `< REP MODEL ${this.options.model ?? "MXA920"} >`;
+        return `< REP MODEL ${model} >`;
       case "< GET FW_VER >":
         return `< REP FW_VER ${this.options.firmwareVersion ?? "6.6.1"} >`;
       case "< GET DEVICE_ID >":
@@ -78,6 +93,39 @@ export class ShureTcpSimulator {
         return "< REP FLASH OFF >";
       case "< SET PRESET 01 >":
         return "< REP PRESET 01 >";
+      // Metering
+      case "< GET 01 AUDIO_IN_PEAK_LEVEL >":
+        return "< REP 01 AUDIO_IN_PEAK_LEVEL -300 >";
+      case "< GET 02 AUDIO_IN_PEAK_LEVEL >":
+        return "< REP 02 AUDIO_IN_PEAK_LEVEL -480 >";
+      case "< GET NUM_CHANNELS >":
+        return "< REP NUM_CHANNELS 8 >";
+      // Dante
+      case "< GET DANTE_ENABLED >":
+        return "< REP DANTE_ENABLED ON >";
+      case "< GET DANTE_DEVICE_NAME >":
+        return `< REP DANTE_DEVICE_NAME ${model}-Simulator >`;
+      case "< GET DANTE_AES67 >":
+        return "< REP DANTE_AES67 OFF >";
+      case "< GET IP_ADDR_NET_AUDIO_PRIMARY >":
+        return "< REP IP_ADDR_NET_AUDIO_PRIMARY 169.254.1.1 >";
+      case "< GET IP_SUBNET_NET_AUDIO_PRIMARY >":
+        return "< REP IP_SUBNET_NET_AUDIO_PRIMARY 255.255.0.0 >";
+      case "< GET IP_GATEWAY_NET_AUDIO_PRIMARY >":
+        return "< REP IP_GATEWAY_NET_AUDIO_PRIMARY 0.0.0.0 >";
+      case "< GET CONTROL_MAC_ADDR >":
+        return "< REP CONTROL_MAC_ADDR AA:BB:CC:DD:EE:FF >";
+      // Wireless
+      case "< GET 01 BATT_CHARGE >":
+        return "< REP 01 BATT_CHARGE 85 >";
+      case "< GET 01 RF_FREQUENCY >":
+        return "< REP 01 RF_FREQUENCY 655600 >";
+      case "< GET 01 RF_POWER >":
+        return "< REP 01 RF_POWER NORMAL >";
+      case "< GET 01 RF_SIGNAL_STRENGTH >":
+        return "< REP 01 RF_SIGNAL_STRENGTH 80 >";
+      case "< GET 01 TX_TYPE >":
+        return "< REP 01 TX_TYPE QLXD2 >";
       default:
         return "< REP ERR >";
     }

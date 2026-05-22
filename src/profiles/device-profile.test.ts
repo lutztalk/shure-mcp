@@ -19,5 +19,5 @@ test("selectProfile chooses MXA920 from configured or probed model", () => {
 });
 
 test("selectProfile falls back to generic TCP", () => {
-  assert.equal(selectProfile({ ...baseDevice, model: "ULXD4" }).model, "genericTcp");
+  assert.equal(selectProfile({ ...baseDevice, model: "UNKNOWN_DEVICE_XYZ" }).model, "genericTcp");
 });

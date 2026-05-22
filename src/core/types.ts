@@ -19,7 +19,10 @@ export type Capability =
   | "preset.load"
   | "talkerPositions.read"
   | "rawTcp.read"
-  | "rawTcp.write";
+  | "rawTcp.write"
+  | "audio.metering"
+  | "wireless.read"
+  | "dante.read";
 
 export type DeviceConfig = {
   id: string;
@@ -142,4 +145,64 @@ export type TalkerPosition = {
   yCm: number;
   zCm: number;
   raw?: unknown;
+};
+
+export type AudioLevelEntry = {
+  channel: number;
+  rawLevel?: string;
+  peakDb?: number;
+  error?: string;
+};
+
+export type DanteStatus = {
+  danteEnabled?: string;
+  danteDeviceName?: string;
+  danteAes67?: string;
+  audioIpAddr?: string;
+  audioSubnetMask?: string;
+  audioGateway?: string;
+  controlMacAddr?: string;
+};
+
+export type WirelessStatus = {
+  channel?: number;
+  batteryCharge?: string;
+  rfFrequency?: string;
+  rfPower?: string;
+  rfSignalStrength?: string;
+  transmitterType?: string;
+};
+
+export type FleetDeviceEntry = {
+  id: string;
+  name: string;
+  model: string;
+  room?: string;
+  status: "online" | "degraded" | "offline";
+  tcpOk: boolean;
+  restOk?: boolean;
+  tcpLatencyMs?: number;
+  restLatencyMs?: number;
+  firmwareVersion?: string;
+  capabilities: Capability[];
+  warnings: string[];
+};
+
+export type FleetRoomEntry = {
+  id: string;
+  name: string;
+  allOnline: boolean;
+  deviceIds: string[];
+};
+
+export type FleetHealth = {
+  ok: boolean;
+  summary: string;
+  onlineCount: number;
+  degradedCount: number;
+  offlineCount: number;
+  totalCount: number;
+  durationMs: number;
+  devices: FleetDeviceEntry[];
+  rooms: FleetRoomEntry[];
 };

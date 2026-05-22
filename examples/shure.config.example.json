@@ -22,6 +22,62 @@
       "preferredApi": "tcp",
       "tcpPort": 2202,
       "tls": "verify"
+    },
+    {
+      "id": "conf-a-mxa710",
+      "name": "Conference A MXA710",
+      "host": "192.168.1.60",
+      "model": "MXA710",
+      "room": "conference-a",
+      "tags": ["linear-array"],
+      "preferredApi": "auto",
+      "tcpPort": 2202,
+      "restBaseUrl": "https://192.168.1.60",
+      "tls": "insecure"
+    },
+    {
+      "id": "conf-a-p300",
+      "name": "Conference A P300",
+      "host": "192.168.1.61",
+      "model": "P300",
+      "room": "conference-a",
+      "tags": ["processor"],
+      "preferredApi": "tcp",
+      "tcpPort": 2202,
+      "tls": "verify"
+    },
+    {
+      "id": "auditorium-mxa910",
+      "name": "Auditorium MXA910",
+      "host": "192.168.1.70",
+      "model": "MXA910",
+      "room": "auditorium",
+      "tags": ["ceiling-array"],
+      "preferredApi": "tcp",
+      "tcpPort": 2202,
+      "tls": "verify"
+    },
+    {
+      "id": "auditorium-qlxd4d",
+      "name": "Auditorium QLXD4D Wireless",
+      "host": "192.168.1.71",
+      "model": "QLXD4D",
+      "room": "auditorium",
+      "tags": ["wireless", "handheld"],
+      "preferredApi": "tcp",
+      "tcpPort": 2202,
+      "tls": "verify"
+    },
+    {
+      "id": "auditorium-ulxd4q",
+      "name": "Auditorium ULXD4Q Wireless",
+      "host": "192.168.1.72",
+      "model": "ULXD4Q",
+      "room": "auditorium",
+      "tags": ["wireless", "lavalier"],
+      "preferredApi": "tcp",
+      "tcpPort": 2202,
+      "tls": "verify"
     }
   ],
   "rooms": [
@@ -29,10 +85,30 @@
       "id": "boardroom",
       "name": "Boardroom",
       "deviceIds": ["boardroom-mxa920", "boardroom-p300"],
+      "tags": ["zoom-room", "teams-room"]
+    },
+    {
+      "id": "conference-a",
+      "name": "Conference Room A",
+      "deviceIds": ["conf-a-mxa710", "conf-a-p300"],
       "tags": ["zoom-room"]
+    },
+    {
+      "id": "auditorium",
+      "name": "Auditorium",
+      "deviceIds": ["auditorium-mxa910", "auditorium-qlxd4d", "auditorium-ulxd4q"],
+      "tags": ["large-venue", "wireless"]
     }
   ],
-  "allowedHosts": ["192.168.1.50", "192.168.1.51"],
+  "allowedHosts": [
+    "192.168.1.50",
+    "192.168.1.51",
+    "192.168.1.60",
+    "192.168.1.61",
+    "192.168.1.70",
+    "192.168.1.71",
+    "192.168.1.72"
+  ],
   "safety": {
     "allowRawSet": false,
     "allowDestructive": false,
@@ -44,6 +120,6 @@
     "idleMs": 150
   },
   "logging": {
-    "level": "warn"
+    "level": "info"
   }
 }

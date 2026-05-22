@@ -1,5 +1,29 @@
 export const DEFAULT_SHURE_PORT = 2202;
 
+export const meteringCommands = {
+  numChannels: "< GET NUM_CHANNELS >",
+} as const;
+
+export const danteCommands = {
+  danteEnabled: "< GET DANTE_ENABLED >",
+  danteDeviceName: "< GET DANTE_DEVICE_NAME >",
+  danteAes67: "< GET DANTE_AES67 >",
+  audioIpAddr: "< GET IP_ADDR_NET_AUDIO_PRIMARY >",
+  audioSubnetMask: "< GET IP_SUBNET_NET_AUDIO_PRIMARY >",
+  audioGateway: "< GET IP_GATEWAY_NET_AUDIO_PRIMARY >",
+  controlMacAddr: "< GET CONTROL_MAC_ADDR >",
+} as const;
+
+export function buildGetAudioLevelCommand(channel: number): string {
+  return `< GET ${formatIndex(channel)} AUDIO_IN_PEAK_LEVEL >`;
+}
+
+export function buildGetWirelessCommand(param: string, channel?: number): string {
+  return channel !== undefined
+    ? `< GET ${formatIndex(channel)} ${param} >`
+    : `< GET ${param} >`;
+}
+
 export type MuteTarget = "device" | "channel" | "automixer" | "coverageArea" | "postGateChannel";
 export type MuteState = "ON" | "OFF" | "TOGGLE";
 export type GainTarget = "channel" | "coverageArea";

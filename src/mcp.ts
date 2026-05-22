@@ -18,7 +18,7 @@ export function createServer(config: ShureConfig = loadConfig()): McpServer {
   const server = new McpServer(
     {
       name: "shure-mcp",
-      version: "0.1.0",
+      version: "1.0.0",
     },
     {
       instructions:
@@ -172,6 +172,32 @@ function registerPrompts(server: McpServer): void {
     },
     ({ command, deviceId }) => promptText(`Evaluate and, if safe, send this documented Shure TCP command: ${command}${deviceId ? ` to device '${deviceId}'` : ""}. Prefer read-only GET commands. If the safety policy blocks it, explain why and suggest the equivalent typed tool when one exists.`),
   );
+
+  server.registerPrompt(
+    "shure_fleet_briefing",
+    {
+      title: "Shure Fleet Briefing",
+      description: "Generate a concise executive-ready fleet health briefing across all configured rooms and devices.",
+      argsSchema: {},
+    },
+    () =>
+      promptText(
+        `Generate a concise fleet health briefing for all configured Shure devices. Call shure_fleet_health first, then summarize: overall status, any offline or degraded devices, room-by-room health, and specific remediation steps for any issues. Format as a clear, professional summary suitable for a meeting briefing.`,
+      ),
+  );
+
+  server.registerPrompt(
+    "shure_wireless_readiness",
+    {
+      title: "Shure Wireless Readiness Check",
+      description: "Check battery levels and RF status across all configured wireless receivers before an event.",
+      argsSchema: { roomId: z.string().optional() },
+    },
+    ({ roomId }) =>
+      promptText(
+        `Run a wireless readiness check${roomId ? ` for room '${roomId}'` : " across all devices"}. Use shure_list_devices to find wireless receivers (QLX-D, ULX-D, Axient Digital), call shure_get_wireless_status for each, and flag any transmitters with battery below 50% or poor signal strength. Recommend replacements or frequency changes if needed.`,
+      ),
+  );
 }
 
 function registerTools(server: McpServer, service: DeviceService): void {
@@ -309,6 +335,69 @@ function registerTools(server: McpServer, service: DeviceService): void {
     },
     async ({ command, waitForResponse, ...selector }) =>
       textResult(await service.sendTcpCommand(selector, command, { waitForResponse })),
+  );
+
+  server.registerTool(
+    "shure_fleet_health",
+    {
+      title: "Shure fleet health",
+      description:
+        "Probe all configured Shure devices in parallel and return a concise fleet health dashboard: TCP/REST status, latency, firmware, capabilities, and a per-room summary.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async () => textResult(await service.getFleetHealth()),
+  );
+
+  server.registerTool(
+    "shure_get_audio_levels",
+    {
+      title: "Get Shure audio levels",
+      description: "Read peak audio input levels (in dBFS) for specified channels on a Shure device using AUDIO_IN_PEAK_LEVEL.",
+      inputSchema: {
+        ...selectorShape,
+        channels: z
+          .array(z.number().int().min(1).max(99))
+          .min(1)
+          .max(16)
+          .describe("1-based channel indices to read (e.g. [1,2,3,4])."),
+      },
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ channels, ...selector }) => textResult(await service.getAudioLevels(selector, channels)),
+  );
+
+  server.registerTool(
+    "shure_get_dante_status",
+    {
+      title: "Get Shure Dante status",
+      description:
+        "Read Dante and AES67 audio network status from a Shure device: enabled state, device name, IP addressing, MAC address, and AES67 mode.",
+      inputSchema: selectorShape,
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async (args) => textResult(await service.getDanteStatus(args)),
+  );
+
+  server.registerTool(
+    "shure_get_wireless_status",
+    {
+      title: "Get Shure wireless status",
+      description:
+        "Read wireless receiver status for Shure QLX-D, ULX-D, and Axient Digital receivers: battery charge, RF frequency, signal strength, TX power, and transmitter type.",
+      inputSchema: {
+        ...selectorShape,
+        channel: z
+          .number()
+          .int()
+          .min(1)
+          .max(4)
+          .optional()
+          .describe("Receiver channel index (1–4). Defaults to channel 1 if omitted."),
+      },
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ channel, ...selector }) => textResult(await service.getWirelessStatus(selector, channel)),
   );
 }
 
