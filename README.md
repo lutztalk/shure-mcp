@@ -7,7 +7,7 @@
 <h1 align="center">shure-mcp</h1>
 
 <p align="center">
-  <strong>Unofficial local MCP server for guarded Shure installed-audio room operations and fleet-ready monitoring.</strong>
+  <strong>Enterprise-grade local MCP server for guarded Shure installed-audio room operations, fleet monitoring, wireless management, and Dante network visibility.</strong>
 </p>
 
 <p align="center">
@@ -26,35 +26,40 @@
 
 `shure-mcp` lets Claude, MCP Inspector, and other Model Context Protocol clients interact with configured Shure networked audio devices from a local machine that can reach the Shure Control network.
 
-It is designed around two jobs:
+It is designed around three jobs:
 
 | Job | What it enables |
 | --- | --- |
 | Room operations | List rooms/devices, probe health, read status, mute/unmute, set gain, identify hardware, load presets, and inspect MXA talker positions. |
-| Fleet readiness | Normalize device inventory, capabilities, transport health, rooms, safety policy, and prompts so the server can grow into broader enterprise workflows. |
+| Fleet monitoring | Parallel fleet health dashboard across all configured devices and rooms with per-device TCP/REST status, latency, firmware, and capability inventory. |
+| Enterprise visibility | Per-channel audio metering, Dante/AES67 network status, and wireless receiver health (battery, RF frequency, signal strength) for QLX-D, ULX-D, and Axient Digital systems. |
 
 The current implementation supports:
 
 - Local MCP over `stdio`, suitable for Claude Desktop, Claude Code, MCP Inspector, and npm package delivery.
 - Shure TCP command strings on port `2202`, using ASCII angle-bracket frames with no newline requirement.
-- First-class profiles for `MXA920`, `MXA902`, `P300`, and `genericTcp`.
-- MXA REST transport support when `restBaseUrl` is configured and the device responds, with TCP fallback for common operations.
-- Guarded typed writes for ordinary operator actions such as mute, gain, identify, and preset load.
-- Raw TCP command execution behind a safety policy.
-- Simulator-backed tests for TCP framing, REST normalization, MCP discovery, and guarded writes.
-- A placeholder `SystemApiTransport` boundary for future Shure System API support.
+- **Persistent TCP connection pool**: one socket per device, reused across serial commands, with a 30-second idle timeout — reduces handshake overhead from N-commands to 1-per-device for fleet operations.
+- First-class profiles for `MXA920`, `MXA902`, `MXA910`, `MXA310`, `MXA710`, `P300`, `QLXD4D`, `ULXD4D`, `ULXD4Q`, `AD600`, `IntelliMix Room`, and `genericTcp`.
+- MXA REST transport for MXA920, MXA902, and MXA710 when `restBaseUrl` is configured, with automatic TCP fallback.
+- Guarded typed writes for ordinary operator actions: mute, gain, identify, and preset load.
+- Raw TCP command execution behind a configurable safety policy.
+- Structured JSON logging to stderr with configurable log level.
+- Simulator-backed tests for TCP framing, REST normalization, MCP discovery, persistent connections, and guarded writes.
+- A `SystemApiTransport` boundary for future Shure System API integration.
 
-It does not currently do network discovery, cloud brokering, user authentication, Shure Designer project management, or remote HTTPS MCP hosting. v1 is intentionally local, explicit, and safety-first.
+It does not currently do network discovery, cloud brokering, user authentication, Shure Designer project management, or remote HTTPS MCP hosting.
 
 ## Why MCP For Shure Rooms?
 
 MCP gives assistants a structured way to use real tools instead of guessing from documentation. For AV and IT teams, that means a Claude conversation can become a controlled room operations surface:
 
-- "Show me every Shure device in the boardroom and whether TCP or REST is healthy."
+- "Show me a fleet health dashboard for every Shure device across all rooms."
+- "What are the battery levels on the wireless mics in the auditorium?"
+- "Is Dante enabled on the boardroom MXA920, and what IP is it using for audio?"
 - "Mute the P300 automixer output while we troubleshoot the far-end echo."
 - "Flash the ceiling array so the onsite tech can identify the right MXA920."
 - "Check whether talker positions are available before I wire camera tracking logic."
-- "Run this documented Shure `GET` command and explain the response."
+- "Read peak audio levels on channels 1 through 4 of the conference room MXA710."
 
 The server keeps configuration, host allowlisting, transport health, typed capabilities, and safety decisions in code instead of pushing those details into every prompt.
 
@@ -64,9 +69,9 @@ The server keeps configuration, host allowlisting, transport health, typed capab
 flowchart LR
   Client["Claude / MCP Client"] --> MCP["src/mcp.ts\nTools, resources, prompts"]
   MCP --> Service["src/services\nDeviceService"]
-  Service --> Profiles["src/profiles\nMXA920, MXA902, P300, genericTcp"]
-  Service --> Safety["src/core\nConfig, safety, result envelopes"]
-  Service --> TCP["src/transports/tcp.ts\nSerialized TCP command strings"]
+  Service --> Profiles["src/profiles\n12 device profiles"]
+  Service --> Safety["src/core\nConfig, logger, safety, result envelopes"]
+  Service --> TCP["src/transports/tcp.ts\nPersistent TCP connection pool"]
   Service --> REST["src/transports/rest.ts\nMXA REST adapter"]
   Service --> SystemAPI["src/transports/system-api.ts\nFuture boundary"]
   TCP --> DeviceTCP["Shure TCP :2202"]
@@ -77,28 +82,37 @@ Source layout:
 
 | Layer | Path | Responsibility |
 | --- | --- | --- |
-| Core | `src/core` | Config loading, normalized types, operation results, safety policy. |
-| Profiles | `src/profiles` | Device capability/profile resolution for MXA920, MXA902, P300, and generic TCP devices. |
-| Transports | `src/transports` | TCP command transport, MXA REST transport, future System API interface. |
-| Services | `src/services` | Device/room orchestration, probing, REST/TCP fallback, typed operations. |
+| Core | `src/core` | Config loading, structured logger, normalized types, operation results, safety policy. |
+| Profiles | `src/profiles` | Device capability/profile resolution for 12 Shure device types. |
+| Transports | `src/transports` | Persistent TCP connection pool, MXA REST transport, future System API interface. |
+| Services | `src/services` | Device/room orchestration, fleet health, audio metering, Dante status, wireless status, REST/TCP fallback. |
 | MCP | `src/mcp.ts` | Public tools, resources, prompts, and deprecated aliases. |
-| Simulator | `src/simulator` | TCP and REST simulators used by tests. |
+| Simulator | `src/simulator` | TCP (multi-command persistent) and REST simulators used by tests. |
 | Shure protocol | `src/shure` | Low-level command builders, TCP client, and frame parser. |
 
 ## Supported Device Profiles
 
-| Profile | Transport preference | Supported today |
+| Profile | Transport | Capabilities |
 | --- | --- | --- |
-| `MXA920` | REST first when configured, TCP fallback | Status, mute, gain, identify, presets, talker-position reads, raw documented TCP. |
-| `MXA902` | REST first when configured, TCP fallback | Status, mute, gain, identify, presets, talker-position reads, raw documented TCP. |
-| `P300` | TCP | Status, automixer/device/channel mute, gain, identify, presets, raw documented TCP. |
+| `MXA920` | REST first, TCP fallback | Status, mute, gain, identify, presets, talker positions, audio metering, Dante. |
+| `MXA902` | REST first, TCP fallback | Status, mute, gain, identify, presets, talker positions, audio metering, Dante. |
+| `MXA910` | TCP | Status, mute, gain, identify, presets, audio metering, Dante. |
+| `MXA710` | REST first, TCP fallback | Status, mute, gain, identify, presets, talker positions, audio metering, Dante. |
+| `MXA310` | TCP | Status, mute, gain, identify, presets, audio metering, Dante. |
+| `P300` | TCP | Status, automixer/device/channel mute, gain, identify, presets, audio metering, Dante. |
+| `QLXD4D` | TCP | Status, mute, gain, identify, presets, audio metering, Dante, wireless (battery, RF). |
+| `ULXD4D` | TCP | Status, mute, gain, identify, presets, audio metering, Dante, wireless (battery, RF). |
+| `ULXD4Q` | TCP | Status, mute, gain, identify, presets, audio metering, Dante, wireless (battery, RF) for 4 channels. |
+| `AD600` | TCP | Status, mute, gain, identify, presets, audio metering, Dante, wireless (battery, RF, interference). |
+| `IntelliMix Room` | TCP | Status, mute, gain, identify, presets, audio metering, Dante. |
 | `genericTcp` | TCP | Conservative command-string operations shared by many Shure installed-audio devices. |
 
 Notes:
 
 - MXA REST support depends on device firmware, settings, and the configured `restBaseUrl`.
-- TCP command strings remain the broad compatibility layer.
+- TCP command strings remain the broad compatibility layer across all profiles.
 - Use the Shure Control IP address, not an audio-only Dante address.
+- Wireless capabilities (battery, RF) require active transmitters to return meaningful values.
 
 ## Quick Start
 
@@ -252,7 +266,7 @@ The preferred configuration path is `SHURE_CONFIG_PATH`, pointing at a JSON file
 SHURE_CONFIG_PATH=/Users/stella/shure-mcp/shure.config.local.json npm start
 ```
 
-Example room with an MXA920 and P300:
+Full multi-room example with wireless and MXA devices:
 
 ```json
 {
@@ -279,6 +293,17 @@ Example room with an MXA920 and P300:
       "preferredApi": "tcp",
       "tcpPort": 2202,
       "tls": "verify"
+    },
+    {
+      "id": "auditorium-ulxd4q",
+      "name": "Auditorium ULXD4Q",
+      "host": "192.168.1.72",
+      "model": "ULXD4Q",
+      "room": "auditorium",
+      "tags": ["wireless", "lavalier"],
+      "preferredApi": "tcp",
+      "tcpPort": 2202,
+      "tls": "verify"
     }
   ],
   "rooms": [
@@ -287,9 +312,15 @@ Example room with an MXA920 and P300:
       "name": "Boardroom",
       "deviceIds": ["boardroom-mxa920", "boardroom-p300"],
       "tags": ["zoom-room"]
+    },
+    {
+      "id": "auditorium",
+      "name": "Auditorium",
+      "deviceIds": ["auditorium-ulxd4q"],
+      "tags": ["large-venue", "wireless"]
     }
   ],
-  "allowedHosts": ["192.168.1.50", "192.168.1.51"],
+  "allowedHosts": ["192.168.1.50", "192.168.1.51", "192.168.1.72"],
   "safety": {
     "allowRawSet": false,
     "allowDestructive": false,
@@ -301,10 +332,12 @@ Example room with an MXA920 and P300:
     "idleMs": 150
   },
   "logging": {
-    "level": "warn"
+    "level": "info"
   }
 }
 ```
+
+See `examples/shure.config.example.json` for a complete seven-device, three-room example covering MXA920, P300, MXA710, MXA910, QLXD4D, and ULXD4Q.
 
 Device fields:
 
@@ -313,12 +346,12 @@ Device fields:
 | `id` | Recommended | Stable identifier used in tool calls. If omitted, generated from name. |
 | `name` | Recommended | Human-readable room/device label. |
 | `host` | Yes | Shure Control IP or DNS name. Must pass allowlist checks when `allowedHosts` is set. |
-| `model` | No | Helps select the profile before probing. Known values include `MXA920`, `MXA902`, `P300`, `genericTcp`. |
+| `model` | No | Helps select the profile before probing. Known values: `MXA920`, `MXA902`, `MXA910`, `MXA310`, `MXA710`, `P300`, `QLXD4D`, `ULXD4D`, `ULXD4Q`, `AD600`, `IntelliMixRoom`. |
 | `room` | No | Room grouping. Rooms can also be declared explicitly in `rooms`. |
-| `tags` | No | Operator metadata, for example `processor`, `camera-tracking`, `divisible-room`. |
+| `tags` | No | Operator metadata, for example `processor`, `camera-tracking`, `wireless`, `divisible-room`. |
 | `preferredApi` | No | `auto`, `rest`, or `tcp`. Defaults to `auto`. |
 | `tcpPort` | No | Defaults to Shure command-string port `2202`. |
-| `restBaseUrl` | MXA REST only | Example: `https://192.168.1.50`. |
+| `restBaseUrl` | MXA REST only | Example: `https://192.168.1.50`. Required for REST-capable MXA devices. |
 | `tls` | No | `verify` or `insecure`. `insecure` is useful for self-signed device certificates on trusted control networks. |
 
 Environment variables remain available for compatibility:
@@ -339,7 +372,167 @@ Environment variables remain available for compatibility:
 
 ## Examples
 
-These examples show the kind of requests you can make from Claude, plus the underlying tool shape when useful.
+### Fleet Health Dashboard
+
+Ask Claude:
+
+```text
+Give me a fleet health dashboard for all Shure devices.
+```
+
+Tool:
+
+```json
+{
+  "tool": "shure_fleet_health",
+  "arguments": {}
+}
+```
+
+Expected result shape:
+
+```json
+{
+  "ok": true,
+  "summary": "All 7 devices online.",
+  "onlineCount": 7,
+  "degradedCount": 0,
+  "offlineCount": 0,
+  "totalCount": 7,
+  "durationMs": 312,
+  "devices": [
+    {
+      "id": "boardroom-mxa920",
+      "name": "Boardroom MXA920",
+      "model": "MXA920",
+      "room": "boardroom",
+      "status": "online",
+      "tcpOk": true,
+      "restOk": true,
+      "tcpLatencyMs": 18,
+      "restLatencyMs": 42,
+      "firmwareVersion": "6.6.1",
+      "warnings": []
+    }
+  ],
+  "rooms": [
+    {
+      "id": "boardroom",
+      "name": "Boardroom",
+      "allOnline": true,
+      "deviceIds": ["boardroom-mxa920", "boardroom-p300"]
+    }
+  ]
+}
+```
+
+### Wireless Battery and RF Status
+
+Ask Claude:
+
+```text
+Check the battery and RF status on the auditorium wireless receiver, channel 1.
+```
+
+Tool:
+
+```json
+{
+  "tool": "shure_get_wireless_status",
+  "arguments": {
+    "deviceId": "auditorium-ulxd4q",
+    "channel": 1
+  }
+}
+```
+
+Expected result shape:
+
+```json
+{
+  "ok": true,
+  "data": {
+    "channel": 1,
+    "batteryCharge": "85",
+    "rfFrequency": "655600",
+    "rfPower": "NORMAL",
+    "rfSignalStrength": "80",
+    "transmitterType": "ULXD2"
+  }
+}
+```
+
+### Dante Network Status
+
+Ask Claude:
+
+```text
+Show me the Dante configuration for the boardroom MXA920.
+```
+
+Tool:
+
+```json
+{
+  "tool": "shure_get_dante_status",
+  "arguments": {
+    "deviceId": "boardroom-mxa920"
+  }
+}
+```
+
+Expected result shape:
+
+```json
+{
+  "ok": true,
+  "data": {
+    "danteEnabled": "ON",
+    "danteDeviceName": "MXA920-Boardroom",
+    "danteAes67": "OFF",
+    "audioIpAddr": "169.254.1.50",
+    "audioSubnetMask": "255.255.0.0",
+    "audioGateway": "0.0.0.0",
+    "controlMacAddr": "AA:BB:CC:DD:EE:FF"
+  }
+}
+```
+
+### Peak Audio Levels
+
+Ask Claude:
+
+```text
+Read peak audio levels for channels 1 through 4 on the boardroom MXA920.
+```
+
+Tool:
+
+```json
+{
+  "tool": "shure_get_audio_levels",
+  "arguments": {
+    "deviceId": "boardroom-mxa920",
+    "channels": [1, 2, 3, 4]
+  }
+}
+```
+
+Expected result shape:
+
+```json
+{
+  "ok": true,
+  "data": {
+    "levels": [
+      { "channel": 1, "rawLevel": "-300", "peakDb": -30.0 },
+      { "channel": 2, "rawLevel": "-480", "peakDb": -48.0 },
+      { "channel": 3, "rawLevel": "-600", "peakDb": -60.0 },
+      { "channel": 4, "rawLevel": "-600", "peakDb": -60.0 }
+    ]
+  }
+}
+```
 
 ### List Inventory
 
@@ -358,39 +551,6 @@ Tool:
 }
 ```
 
-Expected result shape:
-
-```json
-{
-  "devices": [
-    {
-      "device": {
-        "id": "boardroom-mxa920",
-        "name": "Boardroom MXA920",
-        "host": "192.168.1.50",
-        "model": "MXA920",
-        "room": "boardroom"
-      },
-      "profile": {
-        "model": "MXA920",
-        "prefersRest": true
-      }
-    }
-  ],
-  "rooms": [
-    {
-      "id": "boardroom",
-      "name": "Boardroom"
-    }
-  ],
-  "safety": {
-    "allowRawSet": false,
-    "allowDestructive": false,
-    "allowUnknownMutatingCommands": false
-  }
-}
-```
-
 ### Probe A Device
 
 Ask Claude:
@@ -404,13 +564,9 @@ Tool:
 ```json
 {
   "tool": "shure_probe_device",
-  "arguments": {
-    "deviceId": "boardroom-mxa920"
-  }
+  "arguments": { "deviceId": "boardroom-mxa920" }
 }
 ```
-
-The response includes profile selection, model/firmware data when available, TCP health, REST health, warnings, and capabilities.
 
 ### Run A Room Health Check
 
@@ -425,23 +581,11 @@ Tool:
 ```json
 {
   "tool": "shure_get_room_status",
-  "arguments": {
-    "roomId": "boardroom"
-  }
+  "arguments": { "roomId": "boardroom" }
 }
 ```
 
-Useful when opening a support ticket or validating a room after firmware/network work.
-
 ### Mute A P300 Automixer Output
-
-Ask Claude:
-
-```text
-Mute the boardroom P300 automixer output.
-```
-
-Tool:
 
 ```json
 {
@@ -456,36 +600,7 @@ Tool:
 
 For `automixer`, the implementation defaults to Shure channel index `21` when no index is provided.
 
-### Unmute A Device
-
-Ask Claude:
-
-```text
-Unmute the boardroom MXA920.
-```
-
-Tool:
-
-```json
-{
-  "tool": "shure_set_mute",
-  "arguments": {
-    "deviceId": "boardroom-mxa920",
-    "target": "device",
-    "state": "OFF"
-  }
-}
-```
-
 ### Set Channel Gain
-
-Ask Claude:
-
-```text
-Set channel 1 gain on the boardroom P300 to -6 dB.
-```
-
-Tool:
 
 ```json
 {
@@ -503,14 +618,6 @@ The server converts dB into Shure's raw high-resolution gain value for TCP comma
 
 ### Identify Hardware In The Room
 
-Ask Claude:
-
-```text
-Flash the identify light on the boardroom MXA920 so the onsite tech can find it.
-```
-
-Tool:
-
 ```json
 {
   "tool": "shure_identify_device",
@@ -521,27 +628,7 @@ Tool:
 }
 ```
 
-Turn it off afterward:
-
-```json
-{
-  "tool": "shure_identify_device",
-  "arguments": {
-    "deviceId": "boardroom-mxa920",
-    "state": "OFF"
-  }
-}
-```
-
 ### Load A Preset
-
-Ask Claude:
-
-```text
-Load preset 2 on the boardroom MXA920.
-```
-
-Tool:
 
 ```json
 {
@@ -553,38 +640,7 @@ Tool:
 }
 ```
 
-Preset numbers are intentionally constrained from `1` through `10`.
-
-### Read Talker Positions
-
-Ask Claude:
-
-```text
-Check whether the MXA920 is returning talker positions for camera tracking.
-```
-
-Tool:
-
-```json
-{
-  "tool": "shure_get_talker_positions",
-  "arguments": {
-    "deviceId": "boardroom-mxa920"
-  }
-}
-```
-
-Talker positions require an MXA REST-capable device and a reachable `restBaseUrl`.
-
 ### Send A Guarded Raw TCP Command
-
-Ask Claude:
-
-```text
-Send a safe documented Shure GET command to read the boardroom P300 device ID.
-```
-
-Tool:
 
 ```json
 {
@@ -608,11 +664,15 @@ Canonical tools:
 | `shure_probe_device` | Read | Probe TCP/REST health, profile selection, model, firmware, and capabilities. |
 | `shure_get_device_status` | Read | Return normalized status for one configured device. |
 | `shure_get_room_status` | Read | Return normalized status for all devices in one room. |
+| `shure_fleet_health` | Read | Parallel probe of all configured devices — fleet health dashboard with per-room summary. |
+| `shure_get_audio_levels` | Read | Peak dBFS metering across specified channels via `AUDIO_IN_PEAK_LEVEL`. |
+| `shure_get_dante_status` | Read | Dante/AES67 network status: enabled state, device name, IP addressing, AES67 mode. |
+| `shure_get_wireless_status` | Read | Wireless receiver health: battery %, RF frequency, signal strength, TX type. |
+| `shure_get_talker_positions` | Read | Read active talker positions from MXA REST-capable devices. |
 | `shure_set_mute` | Write | Mute, unmute, or toggle device/channel/automixer/coverage-area targets. |
 | `shure_set_gain` | Write | Set channel or coverage-area gain in dB. |
 | `shure_identify_device` | Write | Turn the device identify/flash indicator on or off. |
 | `shure_load_preset` | Write | Load preset `1` through `10`. |
-| `shure_get_talker_positions` | Read | Read active talker positions from MXA REST-capable devices. |
 | `shure_send_tcp_command` | Guarded raw | Send a documented Shure TCP command string through the safety policy. |
 
 Deprecated compatibility aliases are kept for one release where practical:
@@ -641,6 +701,8 @@ Prompts:
 | `shure_mute_sync_diagnosis` | Diagnose mute sync across processors, microphones, and conferencing software. |
 | `shure_camera_tracking_setup` | Assess MXA talker-position and camera-tracking readiness. |
 | `shure_safe_tcp_command` | Evaluate and run a documented TCP command through guardrails. |
+| `shure_fleet_briefing` | Generate a concise executive-ready fleet health briefing across all rooms. |
+| `shure_wireless_readiness` | Pre-event battery and RF readiness check across all wireless receivers. |
 
 ## Safety Model
 
@@ -681,15 +743,13 @@ Example blocked raw command outcome:
   "ok": false,
   "operation": "rawTcp.write",
   "deviceId": "boardroom-p300",
-  "warnings": [
-    "Raw SET commands are disabled by safety policy."
-  ],
+  "warnings": [],
   "remediation": [
-    "Use a typed tool such as shure_set_mute or explicitly enable SHURE_ALLOW_RAW_SET for trusted operators."
+    "Use typed tools for guarded writes or explicitly enable raw SET/destructive policy in config."
   ],
   "error": {
     "code": "SAFETY_BLOCKED",
-    "message": "Raw SET commands are disabled by safety policy."
+    "message": "Raw SET commands are blocked by guarded write policy. Use typed tools or enable allowRawSet."
   }
 }
 ```
@@ -699,10 +759,11 @@ Example blocked raw command outcome:
 TCP behavior:
 
 - Connects to the configured device host and `tcpPort`, defaulting to `2202`.
-- Sends Shure command strings exactly as angle-bracket frames.
-- Does not append newline delimiters.
-- Parses one or more returned frames.
-- Serializes per-device TCP execution so async reports and sample traffic are easier to reason about.
+- Maintains a **persistent socket pool** — one connection per device host:port, reused across all serial commands.
+- Idle sockets are closed automatically after 30 seconds of inactivity.
+- Commands are serialized per device (no concurrent writes on the same socket).
+- Sends Shure command strings exactly as angle-bracket frames, with no newline delimiter.
+- Parses one or more returned frames per command.
 - Supports no-acknowledgement commands with explicit `waitForResponse: false`.
 
 REST behavior:
@@ -711,6 +772,11 @@ REST behavior:
 - Normalizes supported MXA status, mute, preset, and talker-position responses.
 - Falls back to TCP where the profile and operation support it.
 - Supports `tls: "insecure"` for trusted networks with self-signed device certificates.
+
+Logging:
+
+- All log output goes to `stderr` as newline-delimited JSON: `{ "ts": "...", "level": "info", "msg": "..." }`.
+- Configurable via `logging.level` in the config file: `silent`, `error`, `warn`, `info`, `debug`.
 
 ## Development
 
@@ -733,13 +799,13 @@ Current test coverage includes:
 - config-file and legacy environment loading
 - host allowlisting
 - safety policy decisions
-- device profile selection
+- device profile selection and fallback for 12 profiles
 - Shure TCP frame parsing
 - no-newline TCP exchanges
 - no-acknowledgement commands
 - dB to raw Shure gain conversion
 - MXA REST response normalization
-- simulator-backed probing and REST/TCP fallback
+- simulator-backed probing, REST/TCP fallback, and persistent connection multi-command sessions
 - MCP tool/resource/prompt discovery
 - Claude integration examples and skill metadata
 
@@ -753,6 +819,7 @@ Current test coverage includes:
 | REST probe fails but TCP works | MXA REST not enabled/reachable, missing `restBaseUrl`, certificate issue, or unsupported firmware. | Configure `restBaseUrl`, check firmware/settings, use `tls: "insecure"` only on trusted networks if needed. |
 | Raw command is blocked | Safety policy is doing its job. | Prefer typed tools. Enable raw mutating commands only for trusted operators. |
 | Gain value looks unfamiliar | Shure TCP uses raw high-resolution gain values. | Use `shure_set_gain` with `gainDb`; the server converts it. |
+| Wireless status returns all undefined | No active transmitters on the receiver, or device does not support wireless TCP params. | Power on transmitters and verify this is a QLX-D, ULX-D, or Axient Digital receiver. |
 | `node dist/index.js` appears to hang | Stdio MCP servers wait for MCP client traffic. | Use Claude, MCP Inspector, or an SDK client to connect. |
 
 ## Packaging
@@ -785,11 +852,11 @@ Generated artifacts are ignored by git:
 
 High-value next steps:
 
-- Add more typed profile operations for additional Shure installed-audio devices.
 - Harden MXA REST endpoint mapping against real-device fixtures from multiple firmware versions.
+- Add TCP `SAMPLE` subscription support for push-based audio metering and talker-position streams.
 - Add optional Streamable HTTP transport for hosted/internal service deployments.
-- Add authenticated enterprise fleet workflows through the `SystemApiTransport` boundary.
-- Add richer room-level policy, for example write windows, role-based command categories, and audit logging.
+- Add authenticated enterprise fleet workflows through the `SystemApiTransport` boundary (Shure System API Server).
+- Add richer room-level policy: write windows, role-based command categories, and audit logging.
 - Add fixture packs from real rooms while keeping live device details out of source control.
 
 ## References
