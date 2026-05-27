@@ -97,63 +97,38 @@ flowchart LR
 
 ## Quick Start
 
-Requirements: Node.js `>=20`, network reachability to the Shure Control IPs, and a JSON config file.
+Requirements: Node.js `>=20` and git. `npx` fetches, builds, and runs the server straight from GitHub — no clone or manual build needed.
+
+### Claude Code
 
 ```bash
-npm install
-npm run build
-cp examples/shure.config.example.json shure.config.local.json
-# edit shure.config.local.json with real Control IP addresses
-npm run typecheck && npm test
+claude mcp add shure -- npx -y github:lutztalk/shure-mcp
 ```
 
-Inspect with MCP Inspector:
-
-```bash
-SHURE_CONFIG_PATH=/path/to/shure.config.local.json npm run inspect
-```
-
-Start the stdio server:
-
-```bash
-SHURE_CONFIG_PATH=/path/to/shure.config.local.json npm start
-```
-
-`npm start` launches a stdio MCP server and waits for an MCP client — it will look idle if run directly in a terminal.
-
-## Claude Integration
-
-See [docs/claude.md](docs/claude.md) for the full setup guide.
+Verify with `claude mcp list`, then run `/mcp` inside Claude Code to confirm the server is connected.
 
 ### Claude Desktop
 
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS):
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows), then restart Claude Desktop:
 
 ```json
 {
   "mcpServers": {
     "shure": {
-      "command": "node",
-      "args": ["/path/to/shure-mcp/dist/index.js"],
-      "env": {
-        "SHURE_CONFIG_PATH": "/path/to/shure.config.local.json"
-      }
+      "command": "npx",
+      "args": ["-y", "github:lutztalk/shure-mcp"]
     }
   }
 }
 ```
 
-Restart Claude Desktop and look for the `shure_*` tools.
-
-### Claude Code
+The server starts and exposes every tool with **no configuration** — fleet/device tools simply report no devices until you add a config. To control real hardware, copy `examples/shure.config.example.json`, replace the IPs with your Shure Control IPs, and pass its absolute path via `SHURE_CONFIG_PATH`. See [docs/claude.md](docs/claude.md) for the full guide, including local-development and MCPB-bundle installs.
 
 ```bash
-claude mcp add --transport stdio --scope local \
-  --env SHURE_CONFIG_PATH=/path/to/shure.config.local.json \
-  shure -- node /path/to/shure-mcp/dist/index.js
+claude mcp add shure \
+  --env SHURE_CONFIG_PATH=/absolute/path/to/shure.config.json \
+  -- npx -y github:lutztalk/shure-mcp
 ```
-
-Verify with `claude mcp list`, then run `/mcp` inside Claude Code to confirm the server is connected.
 
 ### Claude Desktop MCPB Bundle
 
@@ -460,7 +435,7 @@ Test coverage includes config loading, host allowlisting, safety policy, 12-prof
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| Claude does not show `shure_*` tools | Server not configured, not built, or Claude Desktop not restarted. | Run `npm run build`, verify the `dist/index.js` path, restart Claude. |
+| Claude does not show `shure_*` tools | Server failed to launch or Claude Desktop not restarted. | Confirm Node `>=20` and git are installed, run `npx -y github:lutztalk/shure-mcp` once to surface install errors, then restart Claude. |
 | `Host ... is not in allowedHosts` | Config host not allowlisted. | Add the exact host/IP to `allowedHosts` or `SHURE_ALLOWED_HOSTS`. |
 | TCP probe times out | Wrong IP, firewall, wrong VLAN, device offline, or Dante-only IP. | Use the Shure Control IP and confirm port `2202` reachability. |
 | REST probe fails but TCP works | REST not enabled, missing `restBaseUrl`, cert issue, or old firmware. | Configure `restBaseUrl`, check device settings, use `tls: "insecure"` on trusted networks if needed. |

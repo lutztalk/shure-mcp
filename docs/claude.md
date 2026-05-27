@@ -1,64 +1,15 @@
 # Claude Integration
 
-`shure-mcp` is intended to run as a local stdio MCP server for Claude. This keeps Shure device traffic on the same machine/network that can reach the Shure Control IPs.
+`shure-mcp` runs as a local stdio MCP server for Claude. This keeps Shure device traffic on the same machine/network that can reach the Shure Control IPs.
 
-Claude supports several paths:
+You do not need to clone or build anything — `npx` fetches, builds, and runs the server straight from GitHub. The only requirements are **Node.js `>=20`** and **git** on the machine running Claude.
 
-- **Claude Desktop manual MCP config:** easiest while developing.
-- **Claude Code MCP config:** useful while working in this repo.
-- **Claude Desktop MCPB package:** best long-term user experience for one-click internal installs.
-- **Claude Skill:** optional playbook that teaches Claude how to use the MCP tools safely.
+## Quick install
 
-## 1. Build the server
+### Claude Code
 
 ```bash
-cd /Users/stella/shure-mcp
-npm install
-npm run build
-```
-
-Create a real config by copying `examples/shure.config.example.json` and replacing the IPs with Shure Control IPs.
-
-## 2. Claude Desktop manual config
-
-Claude Desktop local stdio servers use `claude_desktop_config.json`.
-
-macOS:
-
-```text
-~/Library/Application Support/Claude/claude_desktop_config.json
-```
-
-Windows:
-
-```text
-%APPDATA%\Claude\claude_desktop_config.json
-```
-
-Example:
-
-```json
-{
-  "mcpServers": {
-    "shure": {
-      "command": "node",
-      "args": ["/Users/stella/shure-mcp/dist/index.js"],
-      "env": {
-        "SHURE_CONFIG_PATH": "/Users/stella/shure-mcp/examples/shure.config.example.json"
-      }
-    }
-  }
-}
-```
-
-Restart Claude Desktop after editing. In Claude Desktop, check connected tools/connectors and look for the `shure_*` tools.
-
-## 3. Claude Code config
-
-From this repo:
-
-```bash
-claude mcp add --transport stdio --scope local --env SHURE_CONFIG_PATH=/Users/stella/shure-mcp/examples/shure.config.example.json shure -- node /Users/stella/shure-mcp/dist/index.js
+claude mcp add shure -- npx -y github:lutztalk/shure-mcp
 ```
 
 Then verify:
@@ -68,57 +19,99 @@ claude mcp list
 claude mcp get shure
 ```
 
-Inside Claude Code, run `/mcp` and confirm the Shure server is connected.
+Inside Claude Code, run `/mcp` and confirm the Shure server is connected and the `shure_*` tools are listed.
 
-For project-shared config, copy `examples/claude-code.mcp.json` to `.mcp.json` and edit the absolute paths for your checkout and real Shure config file.
+### Claude Desktop
 
-## 4. MCPB packaging for Claude Desktop
+Add this to `claude_desktop_config.json`, then restart Claude Desktop:
 
-Claude Desktop supports MCPB bundles for one-click local MCP installation. This repo includes a root `manifest.json`.
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 
-Build and package:
+```json
+{
+  "mcpServers": {
+    "shure": {
+      "command": "npx",
+      "args": ["-y", "github:lutztalk/shure-mcp"]
+    }
+  }
+}
+```
+
+In Claude Desktop, check connected tools/connectors and look for the `shure_*` tools.
+
+> The first launch is slower because `npx` clones and builds the server; subsequent launches are fast.
+
+## Adding your devices
+
+The server starts and exposes every tool with **no configuration** — fleet/device tools simply report no devices until you point it at a config.
+
+To control real hardware, create a config file (copy [`examples/shure.config.example.json`](../examples/shure.config.example.json) and replace the IPs with your Shure Control IPs), then pass its absolute path via `SHURE_CONFIG_PATH`.
+
+Claude Code:
+
+```bash
+claude mcp add shure \
+  --env SHURE_CONFIG_PATH=/absolute/path/to/shure.config.json \
+  -- npx -y github:lutztalk/shure-mcp
+```
+
+Claude Desktop:
+
+```json
+{
+  "mcpServers": {
+    "shure": {
+      "command": "npx",
+      "args": ["-y", "github:lutztalk/shure-mcp"],
+      "env": {
+        "SHURE_CONFIG_PATH": "/absolute/path/to/shure.config.json"
+      }
+    }
+  }
+}
+```
+
+For project-shared config in a repo, copy [`examples/claude-code.mcp.json`](../examples/claude-code.mcp.json) to `.mcp.json`.
+
+## Local development install
+
+If you are working on the server itself, run it from a checkout instead:
+
+```bash
+git clone https://github.com/lutztalk/shure-mcp.git
+cd shure-mcp
+npm install
+npm run build
+```
+
+Point Claude at the built entry point (`command: "node"`, `args: ["<checkout>/dist/index.js"]`).
+
+## MCPB bundle for Claude Desktop
+
+Claude Desktop also supports one-click MCPB bundles. From a checkout:
 
 ```bash
 npm install
 npm run mcpb:pack
 ```
 
-Install the generated `.mcpb` in Claude Desktop:
+Install the generated `shure-mcp.mcpb` via Settings → Extensions → Advanced settings → Install Extension, then enter the absolute path to your Shure config JSON when prompted.
 
-1. Settings -> Extensions.
-2. Advanced settings.
-3. Install Extension.
-4. Select `/Users/stella/shure-mcp/shure-mcp.mcpb`.
-5. Enter the absolute path to your Shure config JSON.
+## Optional Claude skill
 
-## 5. Optional Claude skill
-
-The folder `skills/shure-av-operator` contains a skill-style playbook for safe Shure room operations.
-
-Validate and package it:
-
-```bash
-npm run skill:pack
-```
-
-Upload `/Users/stella/shure-mcp/skills/shure-av-operator.zip` wherever your Claude environment supports custom skills. The skill does not replace the MCP server; it teaches Claude when and how to use the MCP tools.
+The folder `skills/shure-av-operator` contains a skill-style playbook for safe Shure room operations. Package it with `npm run skill:pack` and upload the resulting ZIP wherever your Claude environment supports custom skills. The skill does not replace the MCP server; it teaches Claude when and how to use the MCP tools.
 
 ## Smoke test
 
-Before opening Claude, verify the server itself:
+To verify the server runs without Claude:
 
 ```bash
-npm test
-node dist/index.js
+npx -y github:lutztalk/shure-mcp
 ```
 
-`node dist/index.js` waits for MCP stdio traffic, so stop it with `Ctrl-C` after confirming it starts without crashing.
-
-For protocol inspection:
-
-```bash
-npm run inspect
-```
+It waits for MCP stdio traffic, so it will look idle — stop it with `Ctrl-C` once it starts without crashing. For protocol inspection from a checkout, use `npm run inspect`.
 
 ## Operational prompts to try in Claude
 
